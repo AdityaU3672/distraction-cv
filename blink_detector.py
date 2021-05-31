@@ -3,7 +3,7 @@ import cv2
 import dlib
 from scipy.spatial import distance as dist
 
-PREDICTOR_PATH = "shape_predictor_68_face_landmarks.dat"
+PREDICTOR_PATH = "prediction/shape_predictor_68_face_landmarks.dat"
 
 FULL_POINTS = list(range(0, 68))
 FACE_POINTS = list(range(17, 68))
@@ -50,7 +50,7 @@ predictor = dlib.shape_predictor(PREDICTOR_PATH)
 
 # Start capturing the WebCam
 # change parameter based on camera being used
-video_capture = cv2.VideoCapture(1)
+video_capture = cv2.VideoCapture(0)
 
 while True:
     ret, frame = video_capture.read()
