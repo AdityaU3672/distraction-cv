@@ -211,15 +211,10 @@ def check_pose(pitch,yaw,roll):
     pose_str = "Pitch:{}, Yaw:{}, Roll:{}".format(pitch, yaw, roll)
     put_text(pose_str, (25, 80), (0,255,0))
     
-    horizontal = consec_hori.update(yaw<-30, yaw > 35)
-    vertical = consec_vert.update(0 < pitch < 167, -170 < pitch < 0)
-
     consec_hori.display("Horizontal:")
     consec_vert.display("Vertical:")
         
-    return horizontal, vertical
-
-
+    return consec_hori.update(yaw<-30, yaw > 35), consec_vert.update(0 < pitch < 167, -170 < pitch < 0)
 
 def check_eyes(ear_avg, shape):
 
@@ -233,11 +228,23 @@ def check_eyes(ear_avg, shape):
         consec_gaze.decrement()
 
     return gazedir
+
+def end_case(horizontal, vertical, gaze,):
+    if (horizontal or vertical):
+        print("Look straight.Your horizontal and vertical viewpoints are distorted.")
+        #make_noise(5)
+
+    if (gaze==2):
+        print("Wake up. You are driving.")
+        #make_noise(10)
     
-    
+    # call make_noise()
+
+def make_noise(volume, file):
+    #implementation specific
+    pass
 
 #----------- Actually Running It -----------------
-
 
 if __name__ == "__main__":
 
@@ -255,10 +262,11 @@ if __name__ == "__main__":
     consec_gaze = counter(70)
     consec_hori = counter(25)
     consec_vert = counter(25)
+    consec_attn = counter(100)
 
-    Vertpt = {0 : "CENTER", 1 : "UP", -1 : "DOWN"}
-    Hoript = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT"}
-    Gazept = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT", 2 : "CLOSED"}
+    Vertpt = {0 : "CENTER", 1 : "UP", -1 : "DOWN"} # Looking up and down (pitch)
+    Hoript = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT"} # Looking left and right (yaw)
+    Gazept = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT", 2 : "CLOSED"} #Gaze
 
     # assuming that the camera stays constant, we can get these values at the start
     # if there is the possibility that the camera can change, put everythinb below this comment into the while loop
