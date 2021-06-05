@@ -7,6 +7,7 @@ import math
 import dlib, cv2
 from scipy.spatial import distance as dist
 
+
 #----------- Supplementary Function Definitions -----------------
 
 def get_gaze_ratio(eye_points, facial_landmarks):
@@ -167,7 +168,7 @@ def eye_aspect_ratio(shape, side):
 
 # could be optimized better both in terms of abstraction barriers and actual implamentation
 
-class counter():
+class Counter():
     def __init__(self, frames, ratio = 0.6) -> None:
         self.thres = int(frames * ratio)
         self.frames = frames
@@ -244,6 +245,52 @@ def make_noise(volume, file):
     #implementation specific
     pass
 
+
+def not_in(tLeft, bRight, xmin, xmax, ymin, ymax):
+    return (tLeft[0]<xmin or tLeft[1]<ymin or bRight[0]>xmax or bRight[1]>ymax)
+    
+
+#def calibration(
+    
+
+class Calibrator:
+    def __init__(self, limt, thres, namee = "") -> None:
+        self.limt = limt
+        self.thres = thres
+        self.consec = 0
+        self.min = math.inf
+        self.max = -math.inf
+        self.sum = 0
+        self.namee = namee
+
+    def update(self, val):
+        
+        self.sum+=val
+        if val > self.max:
+            self.max = val
+        
+        elif val < self.min:
+            self.min = val
+        
+        if self.max-self.min >= self.thres:
+            print(self.namee, "Threshold Exceeded")
+            self.reset()
+            
+        self.consec += 1  
+        if self.consec >= self.limt:
+            return self.sum / self.consec
+
+        return None
+
+    def display(self, labl = ""):
+        print(labl, self.consec, self.sum, self.min, self.max)
+
+    def reset(self):
+        self.consec = 0  
+        self.sum=0 
+        self.min = math.inf
+        self.max = -math.inf
+
 #----------- Actually Running It -----------------
 
 if __name__ == "__main__":
@@ -258,11 +305,15 @@ if __name__ == "__main__":
     left = [36, 37, 38, 39, 40, 41]
     right = [42, 43, 44, 45, 46, 47]
     gaze_ratio = 1
+    calibrating = True
 
-    consec_gaze = counter(70)
-    consec_hori = counter(25)
-    consec_vert = counter(25)
-    consec_attn = counter(100)
+    calib_vert = Calibrator(100, 10, "verti")
+    calib_hori = Calibrator(100, 25, "hori")
+
+    consec_gaze = Counter(70)
+    consec_hori = Counter(25)
+    consec_vert = Counter(25)
+    consec_attn = Counter(100)
 
     Vertpt = {0 : "CENTER", 1 : "UP", -1 : "DOWN"} # Looking up and down (pitch)
     Hoript = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT"} # Looking left and right (yaw)
@@ -272,7 +323,12 @@ if __name__ == "__main__":
     # if there is the possibility that the camera can change, put everythinb below this comment into the while loop
     _, img = cap.read()
     size = img.shape
-    width,height,pixels=img.shape
+    #height,width,pixels=img.shape
+    
+    xmin = (size[1]//10)
+    xmax = xmin * 9
+    ymin = (size[0]//10)
+    ymax = ymin * 9
 
     focal_length = size[1]
     center = (size[1]/2, size[0]/2)
@@ -281,8 +337,59 @@ if __name__ == "__main__":
                             [0, 0, 1]], dtype = "double"
                             )
 
+    # calibration loop
     while True:
+        _, img = cap.read()
+        #new_frame = np.zeros((500, 500, 3), np.uint8)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = detector(gray )#, 1) # adding this second argument detects faces better, but is significantyl slower
+        biggestface = faceIndex(faces)
 
+        calib_hori.display()
+        calib_vert.display()
+
+        if biggestface < 0:
+            put_text("FACE NOT FOUND", (25, 40), (0,255,0))
+            print("Face not Found")
+            calib_hori.reset()
+            calib_vert.reset()
+        
+        else:
+            face = faces[biggestface]
+            #print((face.left(), face.top()), (face.right(), face.bottom()))
+            #print(xmin,ymin,xmax,ymax)
+            if not_in((face.left(), face.top()), (face.right(), face.bottom()), xmin, xmax, ymin, ymax):
+                put_text("CENTER FACE IN FRAME", (25, 40), (0,255,0))
+                calib_hori.reset()
+                calib_vert.reset()
+                print("Out of Frame")
+
+            else:
+                shape = predictor(gray, face)
+                ret, pitch, yaw, roll = updt_pose(shape)
+                pitch = 180 - pitch if pitch > 0 else -180 - pitch
+                pose_str = "Pitch:{}, Yaw:{}, Roll:{}".format(pitch, yaw, roll)
+                put_text(pose_str, (25, 80), (0,255,0))
+                
+                base_yaw = calib_hori.update(yaw)
+                base_pitch = calib_vert.update(pitch )
+                
+                cv2.imshow("Output", img)
+
+                if not (base_yaw == None or base_pitch == None):
+                    put_text("FREE TONIGHT? - You got snap?", (25, 40), (0,255,0))
+                    break
+                
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+    
+    
+    #for _ in range(3):
+        #put_text("FREE TONIGHT? - You got snap?", (25, 40), (0,255,0))
+
+    #Main Loop
+    while True:
+        print(base_yaw, base_pitch)
         _, img = cap.read()
         #new_frame = np.zeros((500, 500, 3), np.uint8)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
