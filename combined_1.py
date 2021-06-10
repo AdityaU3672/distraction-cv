@@ -4,6 +4,8 @@
 
 import numpy as np
 import math
+
+from numpy.lib.type_check import imag
 import dlib, cv2
 from scipy.spatial import distance as dist
 modelFile = "DNN/res10_300x300_ssd_iter_140000.caffemodel"
@@ -137,19 +139,19 @@ def faceIndex(rects):
 #FUNCTION DEFINITION END
 
 def updt_pose(shape):
-        image_points = make2d(shape)
+    image_points = make2d(shape)
 
-        (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points,camera_matrix, dist_coeffs, flags=cv2.cv2.SOLVEPNP_ITERATIVE)
-        (nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 0.0, 1000.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
+    (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points,camera_matrix, dist_coeffs, flags=cv2.cv2.SOLVEPNP_ITERATIVE)
+    (nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 0.0, 1000.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
 
-        # DRAWING THE LINE
-        p1 = ( int(image_points[0][0]), int(image_points[0][1]))
-        p2 = ( int(nose_end_point2D[0][0][0]), int(nose_end_point2D[0][0][1]))
-        result=str(p2[0])+" "+str(p2[1])
-        cv2.line(img, p1, p2, (255,0,0), 2)
+    # DRAWING THE LINE
+    p1 = ( int(image_points[0][0]), int(image_points[0][1]))
+    p2 = ( int(nose_end_point2D[0][0][0]), int(nose_end_point2D[0][0][1]))
+    result=str(p2[0])+" "+str(p2[1])
+    cv2.line(img, p1, p2, (255,0,0), 2)
 
-        # Calculate Euler angles
-        return get_euler_angle(rotation_vector)
+    # Calculate Euler angles
+    return get_euler_angle(rotation_vector)
 
 def shape_to_np(shape, dtype="int"):
 	# initialize the list of (x, y)-coordinates
@@ -211,20 +213,20 @@ class Counter():
 
 
 def check_pose(pitch,yaw,roll):
-    pose_str = "Pitch:{}, Yaw:{}, Roll:{}".format(pitch, yaw, roll)
+    pose_str = "Pitch:{:.2f}, Yaw:{:.2f}, Roll:{:.2f}".format(pitch, yaw, roll)
     put_text(pose_str, (25, 80), (0,255,0))
     
-    consec_hori.display("Horizontal:")
-    consec_vert.display("Vertical:")
+    #consec_hori.display("Horizontal:")
+    #consec_vert.display("Vertical:")
         
-    return consec_hori.update(yaw<-30, yaw > 35), consec_vert.update(pitch > 13, -10 > pitch)
+    return consec_hori.update(yaw<-25, yaw > 25), consec_vert.update(pitch > 10, -10 > pitch)
 
 def check_eyes(ear_avg, shape):
 
     if ear_avg > 0.2:
         gaze_ratio = updt_gaze(shape)
         gazedir = consec_gaze.update(gaze_ratio >= 1.5, gaze_ratio <= 1)
-        consec_gaze.display("Gaze:")
+        #consec_gaze.display("Gaze:")
 
     else:
         gazedir = 2
@@ -252,8 +254,26 @@ def not_in(tLeft, bRight, xmin, xmax, ymin, ymax):
     return (tLeft[0]<xmin or tLeft[1]<ymin or bRight[0]>xmax or bRight[1]>ymax)
     
 
-#def calibration(
-    
+class EMA:
+    def __init__(self, cont) -> None:
+        self.rcnt = np.array([0 for _ in range(cont)], dtype = np.int32)
+        self.cont = cont
+        self.curr = 0
+        self.csum = 0
+
+    def update(self, val):
+        self.csum -= self.rcnt[self.curr]
+        self.rcnt[self.curr] = val
+        self.csum += val
+
+        self.curr += 1
+        self.curr %= self.cont
+
+        return self.csum // self.cont
+
+    def display(self, lab = ""):
+        print(lab, self.csum, self.rcnt, self.curr, self.cont)
+
 
 class Calibrator:
     def __init__(self, limt, thres, namee = "") -> None:
@@ -294,7 +314,7 @@ class Calibrator:
         self.max = -math.inf
 
 
-#  CAFFE DNN
+# CAFFE DNN
 def dnn_detect(img):
     h, w = img.shape[:2]
     blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 1.0,
@@ -307,18 +327,29 @@ def dnn_detect(img):
         confidence = faces[0, 0, i, 2]
         if confidence > 0.5:
             box = faces[0, 0, i, 3:7] * np.array([w, h, w, h])
-            (x, y, x1, y1) = box.astype("int")
+            (left, top, right, bottom) = box.astype("int")
             
-            cv2.rectangle(img, (x, y), (x1, y1), (0, 0, 255), 2)
+            cv2.rectangle(img, (left, top,), (right, bottom), (0, 0, 255), 2)
             
-            outs.append((x, y, x1, y1))
+            outs.append((left, top, right, bottom))
         
     return outs # faces.shape[2][outs]
 
+def biggestface2(arr):
+    cmax = 0
+    index = -1
+    for i, face in enumerate(arr):
+        area=(face[2]-face[0]) * (face[3]-face[1])
+        if area>cmax:
+            cmax = area
+            index=i
+    return index
 
-def to_rectangle(arr):
-    return list(map(lambda x: dlib.rectangle(left = x[0], top = x[1], right = x[2], bottom = x[3]), arr))
 
+
+def to_rectangle(arr, inc = 12):
+    return list(map(lambda x: dlib.rectangle(left = x[0] - inc, top = x[1] - inc, right = x[2] + inc, bottom = x[3] + inc), arr))
+    #return dlib.rectangle(left = arr[0] - inc, top = arr[1] - inc, right = arr[2] + inc, bottom = arr[3] + inc)
 
 #----------- Actually Running It -----------------
 
@@ -344,6 +375,9 @@ if __name__ == "__main__":
     consec_vert = Counter(25)
     consec_attn = Counter(100)
 
+    #LEMA = EMA(10)
+    
+
     Vertpt = {0 : "CENTER", 1 : "UP", -1 : "DOWN"} # Looking up and down (pitch)
     Hoript = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT"} # Looking left and right (yaw)
     Gazept = {0 : "CENTER", 1 : "LEFT", -1 : "RIGHT", 2 : "CLOSED"} #Gaze
@@ -367,25 +401,19 @@ if __name__ == "__main__":
                             )
 
     # calibration loop
+    base_yaw = 0
+    base_pitch = 0
+    
     while True:
         _, img = cap.read()
         #new_frame = np.zeros((500, 500, 3), np.uint8)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        #-----
-
-        #faces = detector(gray )#, 1) # adding this second argument detects faces better, but is significantly slower
         
-        faces = dnn_detect(img)
-        print(faces)
-
-        faces = to_rectangle(faces)
-
-        #----
+        faces = to_rectangle( dnn_detect(img))
         biggestface = faceIndex(faces)
 
-        calib_hori.display()
-        calib_vert.display()
+        #calib_hori.display()
+        #calib_vert.display()
 
         if biggestface < 0:
             put_text("FACE NOT FOUND", (25, 40), (0,255,0))
@@ -395,8 +423,7 @@ if __name__ == "__main__":
         
         else:
             face = faces[biggestface]
-            #print((face.left(), face.top()), (face.right(), face.bottom()))
-            #print(xmin,ymin,xmax,ymax)
+            
             if not_in((face.left(), face.top()), (face.right(), face.bottom()), xmin, xmax, ymin, ymax):
                 put_text("CENTER FACE IN FRAME", (25, 40), (0,255,0))
                 calib_hori.reset()
@@ -428,30 +455,30 @@ if __name__ == "__main__":
 
     #Main Loop
     while True:
-        print(base_yaw, base_pitch)
         _, img = cap.read()
-        #new_frame = np.zeros((500, 500, 3), np.uint8)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        #-----
-
-        #faces = detector(gray )#, 1) # adding this second argument detects faces better, but is significantly slower
-        
-        faces = dnn_detect(img)
-        print(faces)
-
-        faces = to_rectangle(faces)
-
-        #----
-
+        faces = to_rectangle(dnn_detect(img))
         biggestface = faceIndex(faces)
+        
+        #faces2 = detector(gray )#, 1) # adding this second argument detects faces better, but is significantly slower
+        #biggestface = faceIndex(faces)
+        #bf2 = faceIndex(faces2)
 
         if biggestface < 0:
             put_text("FACE NOT FOUND", (25, 40), (0,255,0))
         else:
             face = faces[biggestface]
+            
             shape = predictor(gray, face)
             shape_np = shape_to_np(shape)
+
+            #print(face)
+            cv2.rectangle(img, (face.left(), face.top()), (face.right(), face.bottom()), (255, 0, 0), 2)
+            
+            #if bf2 >= 0:
+                #f2 = faces2[bf2]
+                #cv2.rectangle(img, (f2.left(), f2.top()), (f2.right(), f2.bottom()), (0, 255, 0), 2)
 
             ret, pitch, yaw, roll = updt_pose(shape)
             pitch = 180 - pitch if pitch > 0 else -180 - pitch
