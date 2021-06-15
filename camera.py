@@ -9,6 +9,6 @@ class VideoCamera(object):
         self.video.release()
 
     def get_frame(self):
-        success, image = self.video.read()
+        _, image = self.video.read()
         ret, jpeg = cv2.imencode('.jpg', image)
         return jpeg.tobytes()
